@@ -1,14 +1,17 @@
-const EXTENSION_MAP_PM_TO_TW = {
-  "penguinmod.textPlus": "text",
-  "penguinmod.bitwise": "tw.bitwise",
-};
-
-const EXTENSION_MAP_TW_TO_PM = {
-  "tw.bitwise": "penguinmod.bitwise",
-};
+const PM_OPCODE_PREFIXES = [
+  "penguinmod_",
+  "pm_",
+  "textplus_",
+  "pmtext_",
+];
 
 function log(msg) {
   document.getElementById("log").textContent += msg + "\n";
+}
+
+function isPenguinModOpcode(opcode) {
+  if (!opcode) return false;
+  return PM_OPCODE_PREFIXES.some(p => opcode.startsWith(p));
 }
 
 async function convert() {
@@ -21,9 +24,10 @@ async function convert() {
     return;
   }
 
-  document.getElementById("log").textContent = "";
+  const logBox = document.getElementById("log");
+  logBox.textContent = "";
 
-  log("Loading project...");
+  log("📦 Loading project...");
   const zip = await JSZip.loadAsync(file);
 
   if (!zip.file("project.json")) {
@@ -35,33 +39,75 @@ async function convert() {
     await zip.file("project.json").async("string")
   );
 
-  log("Editing project.json...");
-
   let warnings = [];
+  let vaporizedBlocks = [];
 
+  // ===============================
+  // PenguinMod → TurboWarp
+  // ===============================
   if (mode === "pm-to-tw") {
-    project.meta.agent = "TurboWarp";
-    project.extensions = project.extensions
-      ?.map(ext => EXTENSION_MAP_PM_TO_TW[ext] || ext)
-      .filter(ext => {
-        if (ext.startsWith("penguinmod.")) {
-          warnings.push(`Removed unsupported extension: ${ext}`);
-          return false;
+    log("🐧 → ⚡ Scrubbing PenguinMod identity...");
+
+    // HARD RESET meta
+    project.meta = {
+      semver: "3.0.0",
+      vm: "0.2.0-prerelease.2023",
+      agent: "TurboWarp",
+      platform: {
+        name: "TurboWarp",
+        url: "https://turbowarp.org"
+      }
+    };
+
+    // Remove PenguinMod runtime junk
+    delete project.runtimeOptions;
+    delete project.customRuntime;
+    delete project.penguinmod;
+
+    // Clean extensions list
+    project.extensions = (project.extensions || []).filter(ext => {
+      if (ext.startsWith("penguinmod.") || ext.startsWith("pm.")) {
+        warnings.push(`Removed extension: ${ext}`);
+        return false;
+      }
+      return true;
+    });
+
+    // Scrub PenguinMod blocks
+    for (const target of project.targets) {
+      const spriteName = target.name || "(stage)";
+      if (!target.blocks) continue;
+
+      for (const blockId of Object.keys(target.blocks)) {
+        const block = target.blocks[blockId];
+        if (isPenguinModOpcode(block.opcode)) {
+          vaporizedBlocks.push({
+            sprite: spriteName,
+            opcode: block.opcode
+          });
+          delete target.blocks[blockId];
         }
-        return true;
-      });
+      }
+    }
   }
 
+  // ===============================
+  // TurboWarp → PenguinMod (safe)
+  // ===============================
   if (mode === "tw-to-pm") {
+    log("⚡ → 🐧 Converting to PenguinMod...");
+
     project.meta.agent = "PenguinMod";
-    project.extensions = project.extensions?.map(
-      ext => EXTENSION_MAP_TW_TO_PM[ext] || ext
-    );
+    project.meta.platform = {
+      name: "PenguinMod",
+      url: "https://penguinmod.com"
+    };
   }
 
+  // Save modified project.json
   zip.file("project.json", JSON.stringify(project, null, 2));
 
-  log("Repacking project...");
+  log("📦 Repacking project...");
   const output = await zip.generateAsync({ type: "blob" });
 
   const a = document.createElement("a");
@@ -70,9 +116,22 @@ async function convert() {
     (mode === "pm-to-tw" ? "TurboWarp_" : "PenguinMod_") + file.name;
   a.click();
 
-  log("✅ Done!");
+  log("✅ Conversion complete!");
+
+  // ===============================
+  // REPORT
+  // ===============================
   if (warnings.length) {
-    log("\n⚠ Warnings:");
-    warnings.forEach(w => log("- " + w));
+    log("\n⚠ Extensions removed:");
+    warnings.forEach(w => log(" - " + w));
   }
-}
+
+  if (vaporizedBlocks.length) {
+    log(`\n🔥 Vaporized blocks (${vaporizedBlocks.length}):`);
+    vaporizedBlocks.forEach(b =>
+      log(` - [${b.sprite}] ${b.opcode}`)
+    );
+  } else {
+    log("\n✨ No PenguinMod-only blocks detected");
+  }
+    }
