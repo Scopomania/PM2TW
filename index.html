@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PenguinMod ↔ TurboWarp Converter</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</head>
+<body>
+
+<h1>P2T</h1>
+
+<div class="box">
+  <input type="file" id="fileInput" accept=".sb3,.pmp">
+  
+  <select id="mode">
+    <option value="pm-to-tw">PenguinMod → TurboWarp</option>
+    <option value="tw-to-pm">TurboWarp → PenguinMod</option>
+  </select>
+
+  <button onclick="convert()">Convert</button>
+</div>
+
+<pre id="log"></pre>
+
+<script src="converter.js"></script>
+</body>
+</html>
